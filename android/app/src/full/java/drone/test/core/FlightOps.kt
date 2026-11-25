@@ -55,7 +55,21 @@ object FlightOps {
     }
 
     fun takeoff() {
-        controller()?.startTakeoff(cb("takeoff")) ?: logNoAircraft("takeoff")
+        takeoffWithResult { }
+    }
+
+    fun takeoffWithResult(completion: (String?) -> Unit) {
+        val fc = controller()
+        if (fc == null) {
+            logNoAircraft("takeoff")
+            completion("No aircraft connected")
+            return
+        }
+        fc.startTakeoff { error: DJIError? ->
+            if (error == null) LogBus.ok("takeoff: OK")
+            else LogBus.err("takeoff: ${error.description}")
+            completion(error?.description)
+        }
     }
 
     /**

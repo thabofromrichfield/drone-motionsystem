@@ -506,7 +506,18 @@ class ControlCenter {
   async refreshDispatch() {
     const list = $('#dispatchLog');
     try {
-      const requests = await this.api.listDispatchRequests();
+      const [requests, sessions, telemetry] = await Promise.all([this.api.listDispatchRequests(), this.api.listControllerSessions(), this.api.latestDroneTelemetry()]);
+      if (telemetry) {
+        const data = telemetry.data || {};
+        const sampleAge = Date.now() - Date.parse(telemetry.created_at);
+        const stale = !Number.isFinite(sampleAge) || sampleAge < 0 || sampleAge > 15000 || !Number.isFinite(data.flight_age_ms) || data.flight_age_ms < 0 || data.flight_age_ms + sampleAge > 5000;
+        const flight = data.is_flying === true ? 'airborne' : data.is_flying === false ? 'not flying' : 'flight status unknown';
+        $('#droneTelemetry').textContent = `Telemetry ${isoLocal(new Date(telemetry.created_at))}${stale ? ' · STALE' : ''} · ${flight} · battery ${data.battery_percent ?? '—'}% · altitude ${data.altitude_m ?? '—'} m · ${data.satellites ?? '—'} satellites`;
+      } else $('#droneTelemetry').textContent = 'No drone telemetry yet.';
+      const session = sessions[0];
+      const leaseActive = session && !session.ended_at && Date.parse(session.expires_at) > Date.now();
+      const heartbeatFresh = leaseActive && Date.now() - Date.parse(session.last_seen_at) < 8000;
+      $('#dispatchStatus').textContent = leaseActive ? (heartbeatFresh ? 'Controller armed' : 'Controller heartbeat stale') : 'Controller not armed';
       list.replaceChildren();
       if (!requests.length) {
         const item = document.createElement('li');
@@ -515,11 +526,17 @@ class ControlCenter {
       }
       for (const request of requests) {
         const item = document.createElement('li');
-        const expired = Date.parse(request.expires_at) <= Date.now();
-        item.textContent = `${isoLocal(new Date(request.requested_at))} · ${request.xbox_cameras?.label || 'camera'} · ${request.event_type} · ${expired ? 'expired' : 'queued'} (no controller)`;
+        const expired = request.status === 'queued' && Date.parse(request.expires_at) <= Date.now();
+        const labels = { queued: 'queued', claimed: 'claimed; awaiting DJI result', sdk_accepted: 'DJI accepted; airborne not confirmed', failed: 'refused or failed' };
+        const outcome = expired ? 'expired' : (labels[request.status] || 'unknown');
+        const logs = (request.drone_dispatch_logs || []).slice().sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+        const detail = logs[0]?.detail ? ` · ${logs[0].detail}` : '';
+        item.textContent = `${isoLocal(new Date(request.requested_at))} · ${request.xbox_cameras?.label || 'camera'} · ${request.event_type} · ${outcome}${detail}`;
         list.appendChild(item);
       }
     } catch (error) {
+      $('#dispatchStatus').textContent = 'Controller status unavailable';
+      $('#droneTelemetry').textContent = 'Drone telemetry unavailable.';
       list.replaceChildren();
       const item = document.createElement('li');
       item.textContent = `Dispatch requests unavailable: ${error.message}`;

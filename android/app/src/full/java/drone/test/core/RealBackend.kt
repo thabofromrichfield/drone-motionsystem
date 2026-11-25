@@ -81,6 +81,7 @@ class RealBackend : UavBackend {
     }
 
     override fun takeoff() = FlightOps.takeoff()
+    override fun takeoffWithResult(completion: (String?) -> Unit) = FlightOps.takeoffWithResult(completion)
     override fun hover() = FlightOps.hover()
     override fun land() = FlightOps.land()
     override fun confirmLanding() = FlightOps.confirmLanding()

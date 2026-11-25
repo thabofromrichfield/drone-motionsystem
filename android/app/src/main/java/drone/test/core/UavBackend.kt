@@ -81,6 +81,9 @@ interface UavBackend {
 
     fun takeoff()
 
+    /** Completion is null on SDK acceptance, otherwise a failure description. */
+    fun takeoffWithResult(completion: (String?) -> Unit)
+
     fun hover()
 
     fun land()

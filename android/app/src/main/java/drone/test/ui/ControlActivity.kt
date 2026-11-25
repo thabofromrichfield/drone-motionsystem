@@ -1,15 +1,20 @@
 package drone.test.ui
 
 import android.os.Bundle
+import android.text.InputType
+import android.widget.EditText
+import android.widget.LinearLayout
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import drone.test.R
 import drone.test.core.Backend
 import drone.test.core.DemoTelemetry
 import drone.test.core.LogBus
+import drone.test.core.MotionDispatch
 import drone.test.core.Telemetry
 import drone.test.core.TelemetryStore
 import drone.test.core.UavLinkState
@@ -37,6 +42,8 @@ class ControlActivity : AppCompatActivity() {
     private lateinit var recordButton: Button
     private lateinit var simButton: Button
     private lateinit var consoleView: ConsoleView
+    private lateinit var dispatchButton: Button
+    private lateinit var motionDispatch: MotionDispatch
 
     private var recording = false
 
@@ -73,6 +80,18 @@ class ControlActivity : AppCompatActivity() {
         recordButton = findViewById(R.id.btn_record)
         simButton = findViewById(R.id.btn_sim)
         consoleView = findViewById(R.id.console)
+        dispatchButton = findViewById(R.id.btn_dispatch)
+        motionDispatch = MotionDispatch { message ->
+            dispatchButton.text = when {
+                motionDispatch.active -> "DISARM"
+                motionDispatch.hasConnection -> "STOP LINK"
+                else -> "ARM MOTION"
+            }
+            dispatchButton.contentDescription = "Motion dispatch: $message"
+        }
+        dispatchButton.setOnClickListener {
+            if (motionDispatch.active || motionDispatch.hasConnection) motionDispatch.disarm() else showDispatchArm()
+        }
 
         wireSticks()
         wireCommands()
@@ -100,6 +119,7 @@ class ControlActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
+        motionDispatch.disarm()
         // Order matters. A paused UI must never keep driving the aircraft, and
         // DJI must not be left in virtual-stick mode with no input stream behind
         // it — that state triggers the aircraft's own failsafe. So hand authority
@@ -263,6 +283,40 @@ class ControlActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.btn_limits).setOnClickListener { showLimits() }
+    }
+
+    private fun showDispatchArm() {
+        val email = EditText(this).apply {
+            hint = "Operator email"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+        }
+        val password = EditText(this).apply {
+            hint = "Operator password"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        val fields = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = (20 * resources.displayMetrics.density).toInt()
+            setPadding(pad, 0, pad, 0)
+            addView(email)
+            addView(password)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("ARM MOTION TAKEOFF?")
+            .setMessage("One fresh camera alert can start automatic takeoff. Confirm the launch area is clear, the controller is attended, flight limits are set, and conditions permit flight. The app must remain in the foreground. Arming expires after ten minutes or one request.")
+            .setView(fields)
+            .setNegativeButton("CANCEL") { dialog, _ -> dialog.dismiss() }
+            .setPositiveButton("ARM") { _, _ ->
+                val address = email.text.toString().trim()
+                val secret = password.text.toString()
+                password.text.clear()
+                if (address.isEmpty() || secret.isEmpty()) {
+                    LogBus.err("dispatch: operator email and password are required")
+                } else {
+                    motionDispatch.arm(address, secret)
+                }
+            }
+            .show()
     }
 
     private fun showLimits() {

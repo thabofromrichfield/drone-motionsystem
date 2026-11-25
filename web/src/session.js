@@ -41,25 +41,63 @@ export async function accessToken(url) {
   return (await refreshing).access_token;
 }
 
+async function requireOperator() {
+  const token = await accessToken(PROJECT_URL);
+  const response = await fetch(`${PROJECT_URL}/rest/v1/rpc/drone_is_operator`, {
+    method: 'POST',
+    headers: { apikey: PROJECT_KEY, authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: '{}',
+  });
+  if (!response.ok || await response.json() !== true) {
+    sessionStorage.removeItem(STORAGE_KEY);
+    throw new Error('This account is not an authorized operator.');
+  }
+}
+
 export async function requireSession() {
   if (readSession()) {
-    try { await accessToken(PROJECT_URL); return; }
+    try { await requireOperator(); return; }
     catch { /* Ask for credentials again after expiry or revocation. */ }
   }
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;display:grid;place-items:center;background:#071019;color:#eef8ff;font:16px system-ui;padding:20px';
   overlay.innerHTML = `<form style="width:min(100%,380px);display:grid;gap:14px;padding:28px;border:1px solid #31505a;border-radius:12px;background:#101e28">
     <h1 style="margin:0;font-size:23px">Drone Motion System</h1>
-    <p style="margin:0;line-height:1.5">Sign in with an authorized operator account to access the camera and control center.</p>
+    <p style="margin:0;line-height:1.5">Sign in with an invited operator account. New operators must verify their email.</p>
     <label>Email<input name="email" type="email" autocomplete="username" required style="display:block;width:100%;box-sizing:border-box;padding:10px;margin-top:5px"></label>
     <label>Password<input name="password" type="password" autocomplete="current-password" required style="display:block;width:100%;box-sizing:border-box;padding:10px;margin-top:5px"></label>
     <p role="alert" style="margin:0;color:#ffb5a5"></p>
     <button type="submit" style="padding:12px;cursor:pointer">Sign in</button>
+    <button type="button" data-signup style="padding:12px;cursor:pointer">Create invited account</button>
   </form>`;
   document.body.appendChild(overlay);
   const form = overlay.querySelector('form');
   const error = overlay.querySelector('[role=alert]');
   return new Promise((resolve) => {
+    const signup = form.querySelector('[data-signup]');
+    signup.addEventListener('click', async () => {
+      const email = form.elements.namedItem('email').value.trim();
+      const password = form.elements.namedItem('password').value;
+      if (!email || password.length < 12) {
+        error.textContent = 'Enter your invited email and a password of at least 12 characters.';
+        return;
+      }
+      signup.disabled = true;
+      error.textContent = '';
+      try {
+        const redirect = encodeURIComponent(`${location.origin}/`);
+        const response = await fetch(`${PROJECT_URL}/auth/v1/signup?redirect_to=${redirect}`, {
+          method: 'POST',
+          headers: { apikey: PROJECT_KEY, 'content-type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.msg || result.error_description || 'Account creation failed.');
+        form.elements.namedItem('password').value = '';
+        error.textContent = 'Check your email for the verification link, then return here and sign in.';
+      } catch (err) { error.textContent = err.message; }
+      finally { signup.disabled = false; }
+    });
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const button = form.querySelector('button');
@@ -68,6 +106,7 @@ export async function requireSession() {
       try {
         await authRequest('password', { email: form.elements.namedItem('email').value.trim(), password: form.elements.namedItem('password').value });
         form.elements.namedItem('password').value = '';
+        await requireOperator();
         overlay.remove();
         resolve();
       } catch (err) { error.textContent = err.message; }

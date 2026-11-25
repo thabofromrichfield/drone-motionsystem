@@ -1,0 +1,82 @@
+name: Android controller checks
+
+on:
+  push:
+    paths: ['android/**', '.github/workflows/android.yml']
+  pull_request:
+    paths: ['android/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python3 tools/verify_structure.py
+
+  build:
+    runs-on: ubuntu-22.04
+    needs: verify
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '11'
+      - name: Install Android SDK components
+        shell: bash
+        run: |
+          set -o pipefail
+          SM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SM" ] || SM="$(command -v sdkmanager)"
+          yes | "$SM" --licenses > /dev/null 2>&1 || true
+          "$SM" 'platforms;android-33' 'build-tools;30.0.2' 'build-tools;33.0.2'
+      - name: Build simulator
+        run: ./gradlew --no-daemon assembleSimDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: drone-motionsystem-sim-debug
+          path: android/app/build/outputs/apk/sim/debug/*.apk
+          if-no-files-found: error
+      - name: Prepare optional DJI key
+        id: dji
+        env:
+          DJI_KEY: ${{ secrets.DJI_API_KEY }}
+        shell: bash
+        run: |
+          if [ -z "$DJI_KEY" ]; then
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            echo '::notice::No DJI_API_KEY in this repository; only a non-runnable full compile check will be made.'
+          else
+            python3 - <<'PY'
+          import os
+          from pathlib import Path
+          from xml.sax.saxutils import escape
+          path = Path('app/src/main/res/values/strings.xml')
+          source = path.read_text()
+          placeholder = 'PASTE_YOUR_DJI_APP_KEY_HERE'
+          assert source.count(placeholder) == 1
+          path.write_text(source.replace(placeholder, escape(os.environ['DJI_KEY'].strip())))
+          PY
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Compile full DJI controller
+        run: ./gradlew --no-daemon assembleFullDebug -PallowPlaceholderKey=true
+      - uses: actions/upload-artifact@v4
+        if: steps.dji.outputs.available == 'true'
+        with:
+          name: drone-motionsystem-full-debug
+          path: android/app/build/outputs/apk/full/debug/*.apk
+          if-no-files-found: error

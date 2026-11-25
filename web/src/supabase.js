@@ -194,8 +194,21 @@ export class XboxApi {
 
   async listDispatchRequests() {
     return (await this.req('/rest/v1/drone_dispatch_requests', {
-      params: { select: 'id,event_id,event_type,requested_at,expires_at,status,xbox_cameras(label)', order: 'requested_at.desc', limit: 20 },
+      params: { select: 'id,event_id,event_type,requested_at,expires_at,status,xbox_cameras(label),drone_dispatch_logs(state,detail,created_at)', order: 'requested_at.desc', limit: 20 },
     })) || [];
+  }
+
+  async listControllerSessions() {
+    return (await this.req('/rest/v1/drone_controller_sessions', {
+      params: { select: 'armed_at,expires_at,last_seen_at,ended_at', order: 'armed_at.desc', limit: 1 },
+    })) || [];
+  }
+
+  async latestDroneTelemetry() {
+    const rows = await this.req('/rest/v1/drone_telemetry', {
+      params: { select: 'created_at,data', order: 'created_at.desc', limit: 1 },
+    });
+    return rows?.[0] || null;
   }
 
   async acknowledge(ids, by = 'control-center') {

@@ -18,6 +18,11 @@ data class Telemetry(
     val isFlying: Boolean = false,
     val isGoingHome: Boolean = false,
     val isFailsafe: Boolean = false,
+    val homePointSet: Boolean = false,
+    // Monotonic timestamps let automated dispatch reject stale SDK data.
+    val flightStateAtMs: Long = 0L,
+    val batteryStateAtMs: Long = 0L,
+    val remoteStateAtMs: Long = 0L,
     val flightMode: String = "--",
     val flightTimeSec: Int = 0,
     // position

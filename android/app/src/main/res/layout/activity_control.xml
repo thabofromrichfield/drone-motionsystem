@@ -37,6 +37,13 @@
         android:orientation="horizontal">
 
         <Button
+            android:id="@+id/btn_dispatch"
+            style="@style/Ghost.Button.Safe"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="ARM MOTION" />
+
+        <Button
             android:id="@+id/btn_limits"
             style="@style/Ghost.Button"
             android:layout_width="wrap_content"

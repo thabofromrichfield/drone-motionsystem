@@ -63,6 +63,10 @@ class SimBackend : UavBackend {
     override fun setVirtualStick(enabled: Boolean) = refuse("virtual stick")
 
     override fun takeoff() = refuse("takeoff")
+    override fun takeoffWithResult(completion: (String?) -> Unit) {
+        refuse("takeoff")
+        completion("SIM BUILD: takeoff refused")
+    }
     override fun hover() = refuse("hover")
     override fun land() = refuse("land")
     override fun confirmLanding() = refuse("confirm landing")

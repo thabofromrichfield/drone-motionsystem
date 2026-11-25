@@ -1,37 +1,35 @@
 # Drone Motion System
 
-This repository is the starting point for combining camera motion detection and a DJI drone controller. **Integration, the new database, deployment, and automated flight are not complete.** Do not use this project to operate a real drone without further engineering and testing.
+Integration of the Xbox camera/dashboard and the GHOSTGRID DJI Android controller. **This is a prototype, not cleared for real-world autonomous flight.** The full Android app has not been built or tested with a controller or aircraft, and the web app has not been deployed to Vercel. See the validation requirements below.
 
-## Imported projects
+## Components
 
-- `web/`: Xbox Tracking System at `0b9fb191f4149a6e10b8782bd66b518916a9d8e8`, including the camera detector, dashboard, ingest API, schema, bridge, and tests.
-- `android/`: GHOSTGRID drone controller at `171cf944a64b3096eab3bfa4a3bf865fcceb9d1d`, including the Android source, simulator backend, and DJI sample code. The large generated DJI reference documentation was not copied; it remains in the [source repository](https://github.com/thabofromrichfield/dronesystem/tree/171cf944a64b3096eab3bfa4a3bf865fcceb9d1d/dji-reference/docs).
+- `web/` preserves the camera detector, dashboard, ingest API and bridge from Xbox Tracking System (`0b9fb191f4149a6e10b8782bd66b518916a9d8e8`).
+- `android/` preserves the controller and simulator from GHOSTGRID (`171cf944a64b3096eab3bfa4a3bf865fcceb9d1d`). Most generated DJI docs remain in the [source repository](https://github.com/thabofromrichfield/dronesystem/tree/171cf944a64b3096eab3bfa4a3bf865fcceb9d1d/dji-reference/docs); the verifier's two required reference pages are included here.
+- `integration/sql/000_operators.sql` through `009_claim_after_arm.sql` are applied in order to the Supabase project `drone-motionsystem` (`eu-west-1`). Do not apply the original `web/sql/schema.sql` instead: it permits anonymous writes and public evidence.
 
-Upstream project READMEs describe the original projects, their infrastructure, and their original release procedures; they do not describe a working deployment of this repository.
+A fresh motion detection from an armed camera can create a deduplicated dispatch request expiring 20 seconds after detection. The dashboard shows requests, controller heartbeat, latest telemetry and reported SDK results. A signed-in operator can arm the foreground Android controller for one post-arm alert, with a 10-minute lease. The controller checks the aircraft model, link, state, battery, GPS/home, warnings, telemetry freshness and remaining request time before calling the DJI takeoff API. DJI acceptance is **not** evidence that the aircraft is airborne. Stopping the screen disarms it; the simulator refuses flight commands.
 
-The tracking app's original `xboxtracking` connection was replaced with the new project's URL and publishable key. It uses a separate local-storage key, requires operator sign-in, and the camera bridge requires an explicit endpoint. The new database currently has no authorized operators, so the app cannot access tracking data yet.
+These safeguards are not a safety certification. An authorized camera/operator account can submit events, timestamps are supplied by the camera, and tampering, replay and operational risks require further review. Never use the prototype for unattended or real flight. Reconcile platform behavior with local aviation rules and a qualified operator's preflight and emergency procedures.
 
-## Important boundaries
+## Access and deployment
 
-- Fresh armed-camera alerts with a detection timestamp create a deduplicated, short-lived request in `drone_dispatch_requests`. The dashboard displays requests and expiry. No controller consumes them yet, and detection does not issue a drone command. The Android simulator refuses flight commands; the full build keeps its original manual confirmation workflow.
-- The imported tracking schema allows anonymous camera registration, event writes, dashboard changes, and public evidence access. It is not suitable as an authenticated flight-command source. It must be redesigned and tested before any internet-facing or flight integration deployment. Do not apply `web/sql/schema.sql` unchanged for real operations.
-- Vercel can host the web application and its serverless API. It cannot directly connect to the aircraft; a powered, connected Android controller and a separately designed command and telemetry link are needed.
-- Real-world autonomous takeoff requires validated aircraft compatibility, authenticated and expiring commands, operator oversight, preflight checks, failsafes, and simulator/hardware testing. Nothing here provides those guarantees yet.
+The Supabase database has operator-only policies and private evidence storage. The owner's email was added to the invite allowlist; it is not itself an Auth account. Create an account through the dashboard and verify its email to provision the operator. Signup, confirmation, Realtime, private evidence and the actual ingest path still need real end-to-end testing. Adding an invite for an already verified account requires manual operator provisioning; removing an invite does not revoke an existing operator. Manage both tables through a trusted administrator, not the browser.
 
-## Current status
+A Vercel project `drone-motionsystem` exists but has **no deployment**; attempts through the available deployment connector failed. When deployment is available, use `web` as the project root, verify the serverless `/api/event` route, and add the production site URL to Supabase Auth's redirect allowlist. The local Python preview is only a static development server and its event endpoint is a mock, not the deployed API. The preview URL is temporary and must not be relied on for production.
 
-The Supabase project `drone-motionsystem` was created in `eu-west-1`. The migrations in `integration/sql/` have been applied. They add an operator allowlist, hardened tracking tables, a private evidence bucket, and the expiring request queue. Row-level security is enabled and anonymous camera registration is denied. The queue was exercised with a rolled-back database transaction covering fresh, duplicate, stale, invalid, test, and disarmed events.
+The existing `xboxtracking` Supabase project was paused with the owner's approval to make room; it remains unavailable until restored.
 
-No operator account has been provisioned, so access is currently denied. Browser sign-in, private snapshots, and end-to-end database access still require testing with a provisioned operator.
-
-Pausing the existing `xboxtracking` project was requested with the owner's approval to free a project slot. Its services will remain unavailable until restored.
-
-An empty Vercel project named `drone-motionsystem` was created. It is not linked to Git and has no deployment or configured database connection.
-
-Run the imported detection logic tests with:
+## Validation
 
 ```sh
 node --test web/tests/*.test.mjs
+python3 -m py_compile web/bridge/xbox-bridge.py
+(cd android && python3 tools/verify_structure.py)
+# With Kotlin compiler and Java installed:
+android/tests/run-dispatch-safety.sh
 ```
 
-Android builds require the toolchain and, for the full flavor, a DJI SDK key as explained in `android/README.md`. Do not place secrets in this repository.
+`integration/tests/` contains transactional SQL fixtures. These and the standalone safety tests do not substitute for Android/DJI builds or flight testing. A GitHub Actions workflow checks structure and builds the simulator and full flavor; a runnable full artifact requires a `DJI_API_KEY` Actions secret registered for package `drone.test` in this repository. Never commit the key. See `android/README.md` for original build details; the imported nested workflow does not run automatically in this repository.
+
+Before any hardware use: obtain a working DJI SDK key and build the full app, validate the complete signed-in camera-to-dashboard-to-controller flow, test with DJI simulator and real equipment under controlled conditions, and independently verify aircraft compatibility, permissions, airspace, operator oversight, failsafes and emergency procedures. The requested automatic deployment must not be assumed operational until those steps succeed.

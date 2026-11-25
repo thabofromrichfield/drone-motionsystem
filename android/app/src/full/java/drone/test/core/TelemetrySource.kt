@@ -44,6 +44,9 @@ object TelemetrySource {
                 copy(
                     isFlying = state.isFlying,
                     isGoingHome = state.isGoingHome,
+                    isFailsafe = state.isFailsafeEnabled,
+                    homePointSet = state.isHomeLocationSet,
+                    flightStateAtMs = android.os.SystemClock.elapsedRealtime(),
                     flightMode = state.flightMode?.name ?: "--",
                     flightTimeSec = state.flightTimeInSeconds,
                     altitudeM = loc?.altitude?.toFloat() ?: 0f,
@@ -70,6 +73,7 @@ object TelemetrySource {
             TelemetryStore.mutate {
                 copy(
                     batteryPercent = state.chargeRemainingInPercent,
+                    batteryStateAtMs = android.os.SystemClock.elapsedRealtime(),
                     batteryVolts = state.voltage / 1000f,
                     batteryTempC = state.temperature / 10f
                 )
@@ -103,7 +107,7 @@ object TelemetrySource {
     private val rcCallback = object : HardwareState.HardwareStateCallback {
         override fun onUpdate(state: HardwareState) {
             TelemetryStore.mutate {
-                copy(rcModeSwitch = state.flightModeSwitch?.name ?: "--")
+                copy(rcModeSwitch = state.flightModeSwitch?.name ?: "--", remoteStateAtMs = android.os.SystemClock.elapsedRealtime())
             }
         }
     }
@@ -138,6 +142,7 @@ object TelemetrySource {
         runCatching { aircraft?.gimbal?.setStateCallback(null) }
         runCatching { aircraft?.camera?.setSystemStateCallback(null) }
         runCatching { aircraft?.remoteController?.setHardwareStateCallback(null) }
+        TelemetryStore.mutate { copy(flightStateAtMs = 0L, batteryStateAtMs = 0L, remoteStateAtMs = 0L) }
         LogBus.info("telemetry: unsubscribed")
     }
 
