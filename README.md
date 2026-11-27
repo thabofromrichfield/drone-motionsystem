@@ -1,6 +1,6 @@
 # Drone Motion System
 
-Integration of the Xbox camera/dashboard and the GHOSTGRID DJI Android controller. **This is a prototype, not cleared for real-world autonomous flight.** The full Android app has not been built or tested with a controller or aircraft, and the web app has not been deployed to Vercel. See the validation requirements below.
+Integration of the Xbox camera/dashboard and the GHOSTGRID DJI Android controller. **This is a prototype, not cleared for real-world autonomous flight.** Both Android flavors compiled in CI, but the full flavor used a placeholder key and has not been tested with a controller or aircraft. The web app has not been deployed to Vercel. See the validation requirements below.
 
 ## Components
 
@@ -16,7 +16,7 @@ These safeguards are not a safety certification. An authorized camera/operator a
 
 The Supabase database has operator-only policies and private evidence storage. The owner's email was added to the invite allowlist; it is not itself an Auth account. Create an account through the dashboard and verify its email to provision the operator. Signup, confirmation, Realtime, private evidence and the actual ingest path still need real end-to-end testing. Adding an invite for an already verified account requires manual operator provisioning; removing an invite does not revoke an existing operator. Manage both tables through a trusted administrator, not the browser.
 
-A Vercel project `drone-motionsystem` exists but has **no deployment**; attempts through the available deployment connector failed. When deployment is available, use `web` as the project root, verify the serverless `/api/event` route, and add the production site URL to Supabase Auth's redirect allowlist. The local Python preview is only a static development server and its event endpoint is a mock, not the deployed API. The preview URL is temporary and must not be relied on for production.
+A Vercel project `drone-motionsystem` exists but has **no deployment**; attempts through the available deployment connector failed. The project root is set to `web`, `SUPABASE_URL` is configured and `XBOX_AUTO_REGISTER=false` requires pre-registered cameras. Link this repository in Vercel and deploy the working branch. To enable non-browser camera ingestion, configure `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_SECRET_KEY`) as a sensitive server-side environment variable for this Supabase project; do not put it in browser code or Git. Registered cameras use their own access tokens. Verify the serverless `/api/event` route, and add the resulting site URL to Supabase Auth's redirect allowlist. The local Python preview is only a static development server and its event endpoint is a mock, not the deployed API. The preview URL is temporary and must not be relied on for production.
 
 The existing `xboxtracking` Supabase project was paused with the owner's approval to make room; it remains unavailable until restored.
 
