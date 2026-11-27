@@ -4,9 +4,9 @@ Integration of the Xbox camera/dashboard and the GHOSTGRID DJI Android controlle
 
 ## Components
 
-- `web/` preserves the camera detector, dashboard, ingest API and bridge from Xbox Tracking System (`0b9fb191f4149a6e10b8782bd66b518916a9d8e8`).
+- `web/` preserves the browser camera detector and dashboard from Xbox Tracking System (`0b9fb191f4149a6e10b8782bd66b518916a9d8e8`).
 - `android/` preserves the controller and simulator from GHOSTGRID (`171cf944a64b3096eab3bfa4a3bf865fcceb9d1d`). Most generated DJI docs remain in the [source repository](https://github.com/thabofromrichfield/dronesystem/tree/171cf944a64b3096eab3bfa4a3bf865fcceb9d1d/dji-reference/docs); the verifier's two required reference pages are included here.
-- `integration/sql/000_operators.sql` through `009_claim_after_arm.sql` are applied in order to the Supabase project `drone-motionsystem` (`eu-west-1`). Do not apply the original `web/sql/schema.sql` instead: it permits anonymous writes and public evidence.
+- `integration/sql/000_operators.sql` through `009_claim_after_arm.sql` are applied in order to the Supabase project `drone-motionsystem` (`eu-west-1`). The original anonymous-write schema is not used.
 
 A fresh motion detection from an armed camera can create a deduplicated dispatch request expiring 20 seconds after detection. The dashboard shows requests, controller heartbeat, latest telemetry and reported SDK results. A signed-in operator can arm the foreground Android controller for one post-arm alert, with a 10-minute lease. The controller checks the aircraft model, link, state, battery, GPS/home, warnings, telemetry freshness and remaining request time before calling the DJI takeoff API. DJI acceptance is **not** evidence that the aircraft is airborne. Stopping the screen disarms it; the simulator refuses flight commands.
 
@@ -14,9 +14,11 @@ These safeguards are not a safety certification. An authorized camera/operator a
 
 ## Access and deployment
 
-The Supabase database has operator-only policies and private evidence storage. The owner's email was added to the invite allowlist; it is not itself an Auth account. Create an account through the dashboard and verify its email to provision the operator. Signup, confirmation, Realtime, private evidence and the actual ingest path still need real end-to-end testing. Adding an invite for an already verified account requires manual operator provisioning; removing an invite does not revoke an existing operator. Manage both tables through a trusted administrator, not the browser.
+The Supabase database has operator-only policies and private evidence storage. The owner's email was added to the invite allowlist; it is not itself an Auth account. Create an account through the dashboard and verify its email to provision the operator. Signup, confirmation, Realtime and private evidence still need real end-to-end testing with the operator account. Adding an invite for an already verified account requires manual operator provisioning; removing an invite does not revoke an existing operator. Manage both tables through a trusted administrator, not the browser.
 
-A Vercel project `drone-motionsystem` exists but has **no deployment**; attempts through the available deployment connector failed. The project root is set to `web`, `SUPABASE_URL` is configured and `XBOX_AUTO_REGISTER=false` requires pre-registered cameras. Link this repository in Vercel and deploy the working branch. To enable non-browser camera ingestion, configure `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_SECRET_KEY`) as a sensitive server-side environment variable for this Supabase project; do not put it in browser code or Git. Registered cameras use their own access tokens. Verify the serverless `/api/event` route, and add the resulting site URL to Supabase Auth's redirect allowlist. The local Python preview is only a static development server and its event endpoint is a mock, not the deployed API. The preview URL is temporary and must not be relied on for production.
+The new, separate Vercel project `drone-motionsystem` exists but has **no deployment**; deployment attempts through the available connector failed. Its project root is `web`. Link this repository and deploy the working branch, then add the resulting HTTPS URL to this new Supabase project's Auth redirect allowlist. The phone camera writes directly to this project's database using its signed-in operator session; **no external camera ingestion endpoint or service-role key in Vercel is needed**. The browser is locked to this project's Supabase URL, even if an old saved setting or query parameter is present.
+
+Open `/camera` on the phone, sign in as an invited operator, allow camera access, register the mobile camera and start monitoring. Keep the camera page foregrounded and the screen awake; the browser can suspend monitoring when backgrounded or locked. The DJI controller app also must remain in the foreground to stay armed, so continuous use requires a separate camera phone and DJI-controller phone. The dashboard may be opened on another device. A test alert only tests the dashboard; it never requests flight.
 
 The existing `xboxtracking` Supabase project was paused with the owner's approval to make room; it remains unavailable until restored.
 
@@ -24,12 +26,11 @@ The existing `xboxtracking` Supabase project was paused with the owner's approva
 
 ```sh
 node --test web/tests/*.test.mjs
-python3 -m py_compile web/bridge/xbox-bridge.py
 (cd android && python3 tools/verify_structure.py)
 # With Kotlin compiler and Java installed:
 android/tests/run-dispatch-safety.sh
 ```
 
-`integration/tests/` contains transactional SQL fixtures. These and the standalone safety tests do not substitute for Android/DJI builds or flight testing. A GitHub Actions workflow checks structure and builds the simulator and full flavor; a runnable full artifact requires a `DJI_API_KEY` Actions secret registered for package `drone.test` in this repository. Never commit the key. See `android/README.md` for original build details; the imported nested workflow does not run automatically in this repository.
+`integration/tests/` contains transactional SQL fixtures. These and the standalone safety tests do not substitute for Android/DJI builds or flight testing. A GitHub Actions workflow checks structure and builds the simulator and full flavor; a runnable full artifact requires a `DJI_API_KEY` Actions secret registered for package `drone.test` in this repository. After adding the secret, manually run the **Android controller checks** workflow on this branch; adding a secret does not trigger a build. Never commit the key. See `android/README.md` for original build details; the imported nested workflow does not run automatically in this repository.
 
 Before any hardware use: obtain a working DJI SDK key and build the full app, validate the complete signed-in camera-to-dashboard-to-controller flow, test with DJI simulator and real equipment under controlled conditions, and independently verify aircraft compatibility, permissions, airspace, operator oversight, failsafes and emergency procedures. The requested automatic deployment must not be assumed operational until those steps succeed.

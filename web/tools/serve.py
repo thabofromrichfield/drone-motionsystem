@@ -42,44 +42,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # by browsers, and these headers keep the dev experience close to https.
         self.send_header("x-content-type-options", "nosniff")
         self.send_header("referrer-policy", "strict-origin-when-cross-origin")
-        if self.path.startswith("/api/"):
-            self.send_header("access-control-allow-origin", "*")
         super().end_headers()
-
-    def do_POST(self) -> None:  # noqa: N802 - emulate api/event locally
-        if not self.path.startswith("/api/event"):
-            self.send_error(404, "local dev server only emulates POST /api/event")
-            return
-        length = int(self.headers.get("content-length") or 0)
-        raw = self.rfile.read(length).decode("utf-8", "ignore")
-        try:
-            import json as _json
-
-            body = _json.loads(raw or "{}")
-        except Exception as exc:  # noqa: BLE001
-            self._json(400, {"error": f"invalid json: {exc}"})
-            return
-        token = self.headers.get("x-xbox-token") or body.get("token") or ""
-        if not token:
-            self._json(401, {"error": "missing x-xbox-token"})
-            return
-        self._json(
-            201,
-            {
-                "ok": True,
-                "local_only": True,
-                "hint": "dev server only echoes this payload; the deployed /api/event on Vercel writes to Supabase",
-                "echo": {k: v for k, v in body.items() if k != "snapshot"},
-            },
-        )
-
-    def _json(self, code: int, payload: dict) -> None:
-        data = __import__("json").dumps(payload).encode()
-        self.send_response(code)
-        self.send_header("content-type", "application/json")
-        self.send_header("content-length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
 
     def log_message(self, fmt: str, *args) -> None:
         sys.stderr.write("  %s - %s\n" % (self.address_string(), fmt % args))
@@ -92,7 +55,6 @@ def main() -> int:
         print(f"xbox tracking system — serving {ROOT}")
         print(f"  control center : http://localhost:{port}/")
         print(f"  camera node    : http://localhost:{port}/camera")
-        print(f"  ingest (mock)  : POST http://localhost:{port}/api/event")
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:

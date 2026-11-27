@@ -281,8 +281,8 @@ class ControlCenter {
    */
   async saveSettings(persist) {
     const r = this.previewSettings();
-    if (r.urlInvalid || r.secret || !r.url || !r.key) {
-      this.toast('Fix the highlighted problem first — nothing was changed.', 'err', 'backend');
+    if (r.urlInvalid || r.secret || r.url !== DEFAULTS.url || r.key !== DEFAULTS.key) {
+      this.toast('Only this system’s own Supabase project can be used.', 'err', 'backend');
       return;
     }
     const { url, key } = r;
@@ -578,13 +578,18 @@ class ControlCenter {
       return;
     }
     let fresh = 0;
+    let updated = false;
     for (const e of rows) {
       if (!this.events.has(e.id)) {
         this.events.set(e.id, e);
         this.order.unshift(e.id);
         fresh += 1;
         if (!first && isHotAlert(e) && Date.now() - Date.parse(e.created_at) < 20_000) this.raise(e);
-      } else this.events.set(e.id, { ...this.events.get(e.id), ...e });
+      } else {
+        const previous = this.events.get(e.id);
+        if (previous.snapshot_url !== e.snapshot_url || previous.acknowledged_at !== e.acknowledged_at) updated = true;
+        this.events.set(e.id, { ...previous, ...e });
+      }
     }
     while (this.order.length > 500) {
       const dead = this.order.pop();
@@ -594,7 +599,7 @@ class ControlCenter {
     $('#lastSync').textContent = isoLocal();
     if (this.link.kind === 'live') this.setLink('live', `${this.cameras.size} node(s) · ${this.mode} · ${this.events.size} events`);
     if (first) this.log(`loaded ${rows.length} historical event(s)`);
-    if (fresh) {
+    if (fresh || updated) {
       this.renderQuietly('feed', () => {
         this.renderFeed();
         this.renderBanner();

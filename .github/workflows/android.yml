@@ -61,19 +61,25 @@ jobs:
             echo '::notice::No DJI_API_KEY in this repository; only a non-runnable full compile check will be made.'
           else
             python3 - <<'PY'
-          import os
+          import os, re
           from pathlib import Path
-          from xml.sax.saxutils import escape
+          key = os.environ['DJI_KEY'].strip()
+          if len(key) < 20 or not re.fullmatch(r'[A-Za-z0-9+/=_-]+', key):
+              raise SystemExit('DJI_API_KEY appears truncated or contains invalid characters. Check the Actions secret.')
           path = Path('app/src/main/res/values/strings.xml')
           source = path.read_text()
           placeholder = 'PASTE_YOUR_DJI_APP_KEY_HERE'
           assert source.count(placeholder) == 1
-          path.write_text(source.replace(placeholder, escape(os.environ['DJI_KEY'].strip())))
+          path.write_text(source.replace(placeholder, key))
           PY
             echo 'available=true' >> "$GITHUB_OUTPUT"
           fi
-      - name: Compile full DJI controller
+      - name: Compile full DJI controller (placeholder, not runnable)
+        if: steps.dji.outputs.available != 'true'
         run: ./gradlew --no-daemon assembleFullDebug -PallowPlaceholderKey=true
+      - name: Build full DJI controller with configured key
+        if: steps.dji.outputs.available == 'true'
+        run: ./gradlew --no-daemon assembleFullDebug
       - uses: actions/upload-artifact@v4
         if: steps.dji.outputs.available == 'true'
         with:

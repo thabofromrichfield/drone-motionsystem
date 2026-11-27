@@ -1,13 +1,6 @@
-/**
- * Xbox Tracking System — runtime configuration.
- *
- * Resolution order (first hit wins):
- *   1. URL query params   (?sbUrl=…&sbKey=…&camera=…&rear=1&autostart=1)
- *   2. localStorage       (saved from the in-app Settings panel)
- *   3. Built-in defaults  (the "xbox system" Supabase project)
- *
- * The publishable (anon) key is safe to ship in a static bundle: it only grants
- * what the Row-Level-Security policies below allow (read + node inserts).
+/** Runtime configuration for this system's dedicated Supabase project.
+ * Only the publishable key is shipped in the browser. Operator authentication
+ * and row-level security control access; no server-side secret belongs here.
  */
 
 export const DEFAULTS = {
@@ -83,14 +76,15 @@ export function loadConfig() {
   const forcedReset = qsp('reset') !== null;
   if (forcedReset) clearConfig();
   const stored = forcedReset ? {} : readStored();
-  const rawUrl = qsp('sbUrl') || stored.url || DEFAULTS.url;
-  const rawKey = qsp('sbKey') || stored.key || DEFAULTS.key;
+  // This installation is permanently tied to its own Supabase project. Ignore
+  // stale overrides and URL parameters from the original tracking system.
+  const rawUrl = DEFAULTS.url;
+  const rawKey = DEFAULTS.key;
   const url = normalizeUrl(rawUrl);
   const key = normalizeKey(rawKey);
   const cfg = {
     resetApplied: forcedReset,
-    // an override is "saved" only when the page itself supplied it
-    hasOverride: Boolean(stored.url || stored.key),
+    hasOverride: false,
     // An unusable saved value must never brick the app: fall back to the
     // built-in project and say so (dashboard surfaces this as a toast).
     url: url || normalizeUrl(DEFAULTS.url),

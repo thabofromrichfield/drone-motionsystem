@@ -155,16 +155,15 @@
       <label>node name<input id="linkLabel" placeholder="Living room" value="Living room"></label>
       <label>type<select id="linkKind">
         <option value="mobile">mobile camera</option><option value="webcam">webcam</option>
-        <option value="ip-cam">ip camera</option><option value="rtsp">rtsp stream</option>
-        <option value="bridge">bridge (api)</option><option value="other">other</option>
+        <option value="other">other</option>
       </select></label>
       <label>location<input id="linkLocation" placeholder="e.g. 1st floor, north wall"></label>
     </div>
     <button class="btn primary wide" id="btnLinkCreate">register node &amp; generate link</button>
     <label class="fieldline">node link (open on the device)<span><input id="linkOut" readonly><button class="mini" id="btnCopyLink">Copy link</button></span></label>
-    <label class="fieldline">access token (for the REST/bridge ingest endpoint)<input id="linkToken" readonly></label>
+    <input id="linkToken" type="hidden">
     <div class="qrwrap"><img id="linkQr" alt="QR code for the node link" hidden></div>
-    <p class="hint small">Tip: on iPhone/Android use “Add to Home Screen” on the node page — it then behaves like a kiosk app and keeps monitoring.</p>
+    <p class="hint small">Keep the camera page open and the phone awake. Browsers can pause camera monitoring in the background or when the screen locks.</p>
   </div>
 </div>
 
@@ -172,15 +171,15 @@
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
     <header class="ph"><h2 id="settingsTitle">Backend link</h2><button class="mini" id="btnSettingsClose">close ✕</button></header>
     <p class="hint">This dashboard is configured for the drone-motionsystem project. Sign-in sessions are restricted to that project. Never enter a service-role or secret key here.</p>
-    <label class="fieldline">project URL (or just the 20-char ref)<input id="setUrl" placeholder="https://REF.supabase.co" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
-    <label class="fieldline">publishable / anon key<input id="setKey" placeholder="sb_publishable_…   ·   eyJhbGciOi…" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
+    <label class="fieldline">project URL (or just the 20-char ref)<input id="setUrl" readonly placeholder="https://REF.supabase.co" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
+    <label class="fieldline">publishable / anon key<input id="setKey" readonly placeholder="sb_publishable_…   ·   eyJhbGciOi…" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
     <p class="fieldnote" id="setMsg" role="status" aria-live="polite">current: —</p>
     <div class="btnrow">
       <button class="btn primary" id="btnSettingsSave">test &amp; relink</button>
       <button class="btn ghost" id="btnSettingsTest">test only</button>
       <button class="btn ghost" id="btnSettingsReset">clear link</button>
     </div>
-    <p class="hint small">The <b>service_role / sb_secret</b> key is refused here on purpose — a browser key can only ever be the publishable one. The secret key lives in Vercel env vars for <code>/api/event</code>.</p>
+    <p class="hint small">This application uses its own Supabase project. Mobile camera events use your signed-in operator account; no server-side ingest secret is required.</p>
   </div>
 </div>
 

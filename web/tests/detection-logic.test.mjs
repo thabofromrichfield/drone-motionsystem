@@ -170,12 +170,12 @@ const cfg = await loadSrc('config.js');
 
 test('project URL field accepts everything a human pastes into it', () => {
   const { normalizeUrl, normalizeKey, looksLikeSecretKey } = cfg;
-  const want = 'https://gfshxhqzsexpsahnuwkw.supabase.co';
+  const want = 'https://abcdefghijklmnopqrst.supabase.co';
   assert.equal(normalizeUrl(want), want);
   assert.equal(normalizeUrl(want + '/'), want);
   assert.equal(normalizeUrl(want + '/rest/v1/xbox_cameras?select=id'), want);
-  assert.equal(normalizeUrl('gfshxhqzsexpsahnuwkw.supabase.co'), want, 'missing scheme');
-  assert.equal(normalizeUrl('gfshxhqzsexpsahnuwkw'), want, 'bare project ref');
+  assert.equal(normalizeUrl('abcdefghijklmnopqrst.supabase.co'), want, 'missing scheme');
+  assert.equal(normalizeUrl('abcdefghijklmnopqrst'), want, 'bare project ref');
   assert.equal(normalizeUrl(` "${want}" `), want, 'quotes and padding');
   assert.equal(normalizeUrl('not a url at all'), '', 'junk is rejected, not guessed');
   assert.equal(normalizeUrl(''), '');
@@ -198,7 +198,19 @@ test('new installation never defaults to the original tracking database', () => 
   assert.equal(new XboxApi(cfg.DEFAULTS).configured, true);
 });
 
-test('backend panel: blank fields leave the backend unconfigured', () => {
+test('saved and query-string overrides cannot redirect this installation to another database', () => {
+  const oldLocation = globalThis.location;
+  const oldStorage = globalThis.localStorage;
+  globalThis.location = { search: '?sbUrl=https%3A%2F%2Fexample.supabase.co&sbKey=other' };
+  globalThis.localStorage = { getItem: () => JSON.stringify({ url: 'https://other.supabase.co', key: 'other-key' }) };
+  try {
+    const actual = cfg.loadConfig();
+    assert.equal(actual.url, cfg.DEFAULTS.url);
+    assert.equal(actual.key, cfg.DEFAULTS.key);
+  } finally { globalThis.location = oldLocation; globalThis.localStorage = oldStorage; }
+});
+
+test('backend panel: blank fields use this system’s default', () => {
   const { resolveBackendSettings, DEFAULTS } = cfg;
   const r = resolveBackendSettings('', '');
   assert.equal(r.url, DEFAULTS.url);
@@ -212,16 +224,16 @@ test('backend panel: blank fields leave the backend unconfigured', () => {
 
 test('backend panel: partial or messy input still resolves to a usable link', () => {
   const { resolveBackendSettings, DEFAULTS } = cfg;
-  const byRef = resolveBackendSettings('gfshxhqzsexpsahnuwkw', '  sb_publishable_abc123  ');
-  assert.equal(byRef.url, 'https://gfshxhqzsexpsahnuwkw.supabase.co', 'bare ref normalises to the canonical origin');
+  const byRef = resolveBackendSettings('abcdefghijklmnopqrst', '  sb_publishable_abc123  ');
+  assert.equal(byRef.url, 'https://abcdefghijklmnopqrst.supabase.co', 'bare ref normalises to the canonical origin');
   assert.equal(byRef.key, 'sb_publishable_abc123');
   assert.equal(byRef.usingDefaults, false);
   assert.equal(byRef.urlInvalid, false);
   // A URL without a key remains unconfigured.
-  const restPath = resolveBackendSettings('https://gfshxhqzsexpsahnuwkw.supabase.co/rest/v1/xbox_cameras?select=id', '');
-  assert.equal(restPath.url, 'https://gfshxhqzsexpsahnuwkw.supabase.co');
+  const restPath = resolveBackendSettings('https://abcdefghijklmnopqrst.supabase.co/rest/v1/xbox_cameras?select=id', '');
+  assert.equal(restPath.url, 'https://abcdefghijklmnopqrst.supabase.co');
   assert.equal(restPath.key, DEFAULTS.key);
-  // another project is accepted, so the panel works for a second/staging backend
+  // The parser accepts valid origins; the application itself is pinned to its own project.
   const staging = resolveBackendSettings('https://abcdefghijklmnopqrst.supabase.co', 'sb_publishable_x');
   assert.equal(staging.url, 'https://abcdefghijklmnopqrst.supabase.co');
   assert.equal(staging.urlInvalid, false);
@@ -275,9 +287,6 @@ test('every shipped module parses as an ES module, not just as a script', async 
   const files = readdirSync(srcDir).filter((f) => f.endsWith('.js'));
   assert.ok(files.length >= 8, 'expected the full module set to be present');
   for (const f of files) check(readFileSync(join(srcDir, f), 'utf8'), `src/${f}`);
-  for (const f of readdirSync(join(here, '..', 'api')).filter((x) => x.endsWith('.js'))) {
-    check(readFileSync(join(here, '..', 'api', f), 'utf8'), `api/${f}`);
-  }
   for (const page of ['index.html', 'camera.html']) {
     const html = readFileSync(join(here, '..', page), 'utf8');
     for (const [, body] of html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)) {

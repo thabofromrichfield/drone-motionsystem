@@ -179,6 +179,12 @@ export class XboxApi {
     return this.req(`/rest/v1/${T.events}`, { method: 'POST', body: row, prefer: 'return=representation' });
   }
 
+  async updateEvent(id, patch) {
+    return this.req(`/rest/v1/${T.events}`, {
+      method: 'PATCH', params: { id: `eq.${id}` }, body: patch, prefer: 'return=minimal',
+    });
+  }
+
   async listEvents({ limit = 60, cameraId = null, after = null, severity = null } = {}) {
     const params = {
       select: '*',

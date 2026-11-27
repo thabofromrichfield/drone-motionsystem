@@ -19,6 +19,7 @@ import { Watcher, EV } from './watcher.js';
 import { drawOverlay, sizeCanvas, grabFrame } from './overlay.js';
 import { packSkeleton, coreConfidence } from './skeleton.js';
 import { CUES, unlockAudio, vibrate } from './sound.js';
+import { deliverEventWithEvidence } from './delivery.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -173,6 +174,7 @@ class CameraNode {
         this.log('backgrounded — iOS/Android suspend camera access here, come back to this tab to resume', 'warn');
         return;
       }
+      if (this.running && $('#chkAwake').checked) this.requestWakeLock();
       const dead = !this.stream || this.stream.getVideoTracks().every((t) => t.readyState !== 'live');
       if (this.running && dead) {
         this.log('foregrounded — camera track was dropped, reopening…');
@@ -230,8 +232,10 @@ class CameraNode {
       return null;
     }
     try {
-      const out = await this.api.registerCamera(this.cfg.cameraLabel, this.cfg.cameraKind, this.cfg.cameraLocation || null, deviceLabel());
+      const label = this.cfg.cameraLabel || defaultLabel();
+      const out = await this.api.registerCamera(label, this.cfg.cameraKind, this.cfg.cameraLocation || null, deviceLabel());
       this.cfg.cameraId = out.id;
+      this.cfg.cameraLabel = out.label;
       this.cfg.accessToken = out.access_token;
       saveConfig({ cameraId: out.id, accessToken: out.access_token, cameraLabel: out.label });
       this.camera = out;
@@ -272,12 +276,13 @@ class CameraNode {
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('this browser has no camera API (getUserMedia)');
       await this.openStream();
-      await this.register();
+      if (!await this.register()) throw new Error('Camera could not connect to the drone-motionsystem database. Check your connection and operator sign-in.');
       this.running = true;
       $('#app').dataset.running = '1';
       $('#btnStart').disabled = true;
       $('#btnStop').disabled = false;
       this.setStatus('capture', 'ok', 'live');
+      if ($('#chkAwake').checked) this.requestWakeLock();
       this.log('camera streaming — analysing frames');
       this.pose.init().then(() => {
         if (this.pose.ready) {
@@ -296,6 +301,10 @@ class CameraNode {
       this.heartbeat();
     } catch (err) {
       this.running = false;
+      this.stream?.getTracks().forEach((t) => t.stop());
+      this.stream = null;
+      $('#video').srcObject = null;
+      $('#videoWrap').classList.remove('live');
       $('#btnStart').disabled = false;
       $('#btnStop').disabled = true;
       this.setStatus('capture', 'err', 'failed');
@@ -497,26 +506,26 @@ class CameraNode {
       vibrate(isClear ? [30] : [90, 60, 90]);
     }
 
-    // evidence frame (best-effort, never blocks the alert)
-    if (!isClear && this.cfg.captureSnapshots !== false && this.api.configured) {
-      try {
-        const snap = await withTimeout(grabFrame($('#video'), { width: 760, quality: 0.6 }), 6000, 'snapshot');
-        if (snap && snap.blob) {
-          const up = await withTimeout(
-            this.api.uploadSnapshot({ cameraId: this.cfg.cameraId, sessionId: this.sessionId, blob: snap.blob }),
-            9000,
-            'upload'
-          );
-          row.snapshot_url = up.url;
-          row.meta = { ...row.meta, snap: { w: snap.width, h: snap.height, kb: Math.round(snap.bytes / 1024) } };
-          this.counters.snapshots += 1;
-        }
-      } catch (err) {
-        this.log(`snapshot skipped: ${err.message}`, 'warn');
-      }
-    }
-
-    await this.send(row, isClear);
+    // Upload evidence concurrently; the event reaches the queue immediately.
+    const capture = !isClear && this.cfg.captureSnapshots !== false && this.api.configured ? async () => {
+      const snap = await withTimeout(grabFrame($('#video'), { width: 760, quality: 0.6 }), 6000, 'snapshot');
+      if (!snap?.blob) return null;
+      const up = await withTimeout(
+        this.api.uploadSnapshot({ cameraId: this.cfg.cameraId, sessionId: this.sessionId, blob: snap.blob }), 9000, 'upload'
+      );
+      return { url: up.url };
+    } : null;
+    await deliverEventWithEvidence(row, {
+      send: (event) => this.send(event, isClear),
+      capture,
+      attach: async (id, event, evidence) => {
+        if (id != null) await this.api.updateEvent(id, { snapshot_url: evidence.url });
+        else if (this.queue.includes(event)) event.snapshot_url = evidence.url;
+        else return; // The queued event was flushed before evidence arrived.
+        this.counters.snapshots += 1;
+      },
+      onError: (err) => this.log(`snapshot skipped: ${err.message}`, 'warn'),
+    });
   }
 
   async send(row, quiet = false) {
@@ -526,7 +535,7 @@ class CameraNode {
       return;
     }
     try {
-      await this.api.insertEvent(row);
+      const inserted = await this.api.insertEvent(row);
       this.counters.events += 1;
       if (row.is_alert !== false && !quiet) this.counters.alerts += 1;
       this.log(
@@ -537,6 +546,7 @@ class CameraNode {
       $('#evCount').textContent = String(this.counters.events);
       $('#alertCount').textContent = String(this.counters.alerts);
       this.setStatus('uplink', 'ok', 'sending');
+      return Array.isArray(inserted) ? inserted[0]?.id ?? null : inserted?.id ?? null;
     } catch (err) {
       if (this.queue.length < MAX_QUEUE) this.queue.push(row);
       else {
@@ -671,6 +681,7 @@ class CameraNode {
 
   async requestWakeLock() {
     try {
+      if (this.wakeLock && !this.wakeLock.released) return;
       if ('wakeLock' in navigator) {
         this.wakeLock = await navigator.wakeLock.request('screen');
         this.log('screen wake lock held');
